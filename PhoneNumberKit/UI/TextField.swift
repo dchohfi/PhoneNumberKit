@@ -1,4 +1,4 @@
-//
+g//
 //  TextField.swift
 //  PhoneNumberKit
 //
@@ -9,104 +9,25 @@
 import Foundation
 import UIKit
 
-/// Custom text field that formats phone numbers
-open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
+open class PhoneNumberTextFieldDelegate: NSObject, UITextFieldDelegate {
+    
+    weak open var delegate: UITextFieldDelegate?
     
     let phoneNumberKit = PhoneNumberKit()
-    
-    /// Override region to set a custom region. Automatically uses the default region code.
-    public var defaultRegion = PhoneNumberKit.defaultRegionCode() {
-        didSet {
-            partialFormatter.defaultRegion = defaultRegion
-        }
-    }
-    
-    public var withPrefix: Bool = true {
-        didSet {
-            partialFormatter.withPrefix = withPrefix
-            if withPrefix == false {
-                self.keyboardType = UIKeyboardType.numberPad
-            }
-            else {
-                self.keyboardType = UIKeyboardType.phonePad
-            }
-        }
-    }
-    
-    
     let partialFormatter: PartialFormatter
     
-    let nonNumericSet: NSCharacterSet = {
+    private let nonNumericSet: NSCharacterSet = {
         var mutableSet = NSMutableCharacterSet.decimalDigit().inverted
         mutableSet.remove(charactersIn: PhoneNumberConstants.plusChars)
         return mutableSet as NSCharacterSet
     }()
     
-    weak private var _delegate: UITextFieldDelegate?
-    
-    override open var delegate: UITextFieldDelegate? {
-        get {
-            return _delegate
-        }
-        set {
-            self._delegate = newValue
-        }
+    override init() {
+        self.partialFormatter = PartialFormatter(phoneNumberKit: self.phoneNumberKit,
+                                                 defaultRegion: PhoneNumberKit.defaultRegionCode(),
+                                                 withPrefix: true)
+        super.init()
     }
-    
-    //MARK: Status
-    
-    public var currentRegion: String {
-        get {
-            return partialFormatter.currentRegion
-        }
-    }
-    public var isValidNumber: Bool {
-        get {
-            let rawNumber = self.text ?? String()
-            do {
-                let _ = try phoneNumberKit.parse(rawNumber, withRegion: currentRegion)
-                return true
-            } catch {
-                return false
-            }
-        }
-    }
-    
-    //MARK: Lifecycle
-    
-    /**
-     Init with frame
-     
-     - parameter frame: UITextfield F
-     
-     - returns: UITextfield
-     */
-    override public init(frame:CGRect)
-    {
-        self.partialFormatter = PartialFormatter(phoneNumberKit: phoneNumberKit, defaultRegion: defaultRegion, withPrefix: withPrefix)
-        super.init(frame:frame)
-        self.setup()
-    }
-    
-    /**
-     Init with coder
-     
-     - parameter aDecoder: decoder
-     
-     - returns: UITextfield
-     */
-    required public init(coder aDecoder: NSCoder) {
-        self.partialFormatter = PartialFormatter(phoneNumberKit: phoneNumberKit, defaultRegion: defaultRegion, withPrefix: withPrefix)
-        super.init(coder: aDecoder)!
-        self.setup()
-    }
-    
-    func setup(){
-        self.autocorrectionType = .no
-        self.keyboardType = UIKeyboardType.phonePad
-        super.delegate = self
-    }
-    
     
     // MARK: Phone number formatting
     
@@ -114,19 +35,19 @@ open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
      *  To keep the cursor position, we find the character immediately after the cursor and count the number of times it repeats in the remaining string as this will remain constant in every kind of editing.
      */
     
-    internal struct CursorPosition {
+    private struct CursorPosition {
         let numberAfterCursor: String
         let repetitionCountFromEnd: Int
     }
     
-    internal func extractCursorPosition() -> CursorPosition? {
+    private func extractCursorPosition(textField: UITextField) -> CursorPosition? {
         var repetitionCountFromEnd = 0
         // Check that there is text in the UITextField
-        guard let text = text, let selectedTextRange = selectedTextRange else {
+        guard let text = textField.text, let selectedTextRange = textField.selectedTextRange else {
             return nil
         }
         let textAsNSString = text as NSString
-        let cursorEnd = offset(from: beginningOfDocument, to: selectedTextRange.end)
+        let cursorEnd = textField.offset(from: textField.beginningOfDocument, to: selectedTextRange.end)
         // Look for the next valid number after the cursor, when found return a CursorPosition struct
         for i in cursorEnd ..< textAsNSString.length  {
             let cursorRange = NSMakeRange(i, 1)
@@ -145,10 +66,10 @@ open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
     }
     
     // Finds position of previous cursor in new formatted text
-    internal func selectionRangeForNumberReplacement(textField: UITextField, formattedText: String) -> NSRange? {
+    private func selectionRangeForNumberReplacement(textField: UITextField, formattedText: String) -> NSRange? {
         let textAsNSString = formattedText as NSString
         var countFromEnd = 0
-        guard let cursorPosition = extractCursorPosition() else {
+        guard let cursorPosition = extractCursorPosition(textField: textField) else {
             return nil
         }
         
@@ -167,12 +88,12 @@ open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
     }
     
     public func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
-        guard let text = text else {
+        guard let text = textField.text else {
             return false
         }
         
         // allow delegate to intervene
-        guard _delegate?.textField?(textField, shouldChangeCharactersIn: range, replacementString: string) ?? true else {
+        guard delegate?.textField?(textField, shouldChangeCharactersIn: range, replacementString: string) ?? true else {
             return false
         }
         
@@ -192,8 +113,8 @@ open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
             selectedTextRange = selectionRangeForNumberReplacement(textField: textField, formattedText: formattedNationalNumber)
             textField.text = formattedNationalNumber
         }
-        sendActions(for: .editingChanged)
-        if let selectedTextRange = selectedTextRange, let selectionRangePosition = textField.position(from: beginningOfDocument, offset: selectedTextRange.location) {
+        textField.sendActions(for: .editingChanged)
+        if let selectedTextRange = selectedTextRange, let selectionRangePosition = textField.position(from: textField.beginningOfDocument, offset: selectedTextRange.location) {
             let selectionRange = textField.textRange(from: selectionRangePosition, to: selectionRangePosition)
             textField.selectedTextRange = selectionRange
         }
@@ -204,26 +125,115 @@ open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
     //MARK: UITextfield Delegate
     
     public func textFieldShouldBeginEditing(_ textField: UITextField) -> Bool {
-        return _delegate?.textFieldShouldBeginEditing?(textField) ?? true
+        return self.delegate?.textFieldShouldBeginEditing?(textField) ?? true
     }
     
     public func textFieldDidBeginEditing(_ textField: UITextField) {
-        _delegate?.textFieldDidBeginEditing?(textField)
+        self.delegate?.textFieldDidBeginEditing?(textField)
     }
     
     public func textFieldShouldEndEditing(_ textField: UITextField) -> Bool {
-        return _delegate?.textFieldShouldEndEditing?(textField) ?? true
+        return self.delegate?.textFieldShouldEndEditing?(textField) ?? true
     }
     
     public func textFieldDidEndEditing(_ textField: UITextField) {
-        _delegate?.textFieldDidEndEditing?(textField)
+        self.delegate?.textFieldDidEndEditing?(textField)
     }
     
     public func textFieldShouldClear(_ textField: UITextField) -> Bool {
-        return _delegate?.textFieldShouldClear?(textField) ?? true
+        return self.delegate?.textFieldShouldClear?(textField) ?? true
     }
     
     public func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        return _delegate?.textFieldShouldReturn?(textField) ?? true
+        return self.delegate?.textFieldShouldReturn?(textField) ?? true
+    }
+}
+
+/// Custom text field that formats phone numbers
+open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
+    
+    private let proxyDelegate = PhoneNumberTextFieldDelegate()
+    
+    /// Override region to set a custom region. Automatically uses the default region code.
+    public var defaultRegion: String {
+        didSet {
+            self.proxyDelegate.partialFormatter.defaultRegion = self.defaultRegion
+        }
+    }
+    
+    public var withPrefix: Bool = true {
+        didSet {
+            self.proxyDelegate.partialFormatter.withPrefix = withPrefix
+            if self.withPrefix == false {
+                self.keyboardType = UIKeyboardType.numberPad
+            }
+            else {
+                self.keyboardType = UIKeyboardType.phonePad
+            }
+        }
+    }
+    
+    open override var delegate: UITextFieldDelegate? {
+        set {
+            self.proxyDelegate.delegate = newValue
+        }
+        get {
+            return self.proxyDelegate.delegate
+        }
+    }
+    
+    //MARK: Status
+    
+    public var currentRegion: String {
+        get {
+            return self.proxyDelegate.partialFormatter.currentRegion
+        }
+    }
+    
+    public var isValidNumber: Bool {
+        get {
+            let rawNumber = self.text ?? String()
+            do {
+                _ = try self.proxyDelegate.phoneNumberKit.parse(rawNumber, withRegion: currentRegion)
+                return true
+            } catch {
+                return false
+            }
+        }
+    }
+    
+    //MARK: Lifecycle
+    
+    /**
+     Init with frame
+     
+     - parameter frame: UITextfield F
+     
+     - returns: UITextfield
+     */
+    override public init(frame:CGRect)
+    {
+        self.defaultRegion = proxyDelegate.partialFormatter.defaultRegion
+        super.init(frame:frame)
+        self.setup()
+    }
+    
+    /**
+     Init with coder
+     
+     - parameter aDecoder: decoder
+     
+     - returns: UITextfield
+     */
+    required public init(coder aDecoder: NSCoder) {
+        self.defaultRegion = proxyDelegate.partialFormatter.defaultRegion
+        super.init(coder: aDecoder)!
+        self.setup()
+    }
+    
+    func setup(){
+        super.delegate = self.proxyDelegate
+        self.autocorrectionType = .no
+        self.keyboardType = UIKeyboardType.phonePad
     }
 }
