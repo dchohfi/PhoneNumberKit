@@ -16,15 +16,21 @@ open class PhoneNumberTextFieldDelegate: NSObject, UITextFieldDelegate {
     let phoneNumberKit = PhoneNumberKit()
     let partialFormatter: PartialFormatter
     
+    public var defaultRegion: String = PhoneNumberKit.defaultRegionCode() {
+        didSet {
+            self.partialFormatter.defaultRegion = self.defaultRegion
+        }
+    }
+    
     private let nonNumericSet: NSCharacterSet = {
         var mutableSet = NSMutableCharacterSet.decimalDigit().inverted
         mutableSet.remove(charactersIn: PhoneNumberConstants.plusChars)
         return mutableSet as NSCharacterSet
     }()
     
-    override init() {
+    public override init() {
         self.partialFormatter = PartialFormatter(phoneNumberKit: self.phoneNumberKit,
-                                                 defaultRegion: PhoneNumberKit.defaultRegionCode(),
+                                                 defaultRegion: self.defaultRegion,
                                                  withPrefix: true)
         super.init()
     }
